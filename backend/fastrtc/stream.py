@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from typing_extensions import NotRequired
 
 from .tracks import HandlerType, StreamHandlerImpl
+from .utils import RTCConfigurationCallable
 from .webrtc import WebRTC
 from .webrtc_connection_mixin import WebRTCConnectionMixin
 from .websocket import WebSocketHandler

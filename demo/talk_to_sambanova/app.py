@@ -95,7 +95,7 @@ class InputData(BaseModel):
 
 @app.get("/")
 async def _():
-    rtc_config = get_twilio_turn_credentials() if get_space() else None
+    rtc_config = get_cloudflare_turn_credentials() if get_space() else None
     html_content = (curr_dir / "index.html").read_text()
     html_content = html_content.replace("__RTC_CONFIGURATION__", json.dumps(rtc_config))
     return HTMLResponse(content=html_content)
