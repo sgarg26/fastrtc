@@ -217,6 +217,8 @@ async def player_worker_decode(
             print("Error processing frame: %s", str(e))
             if isinstance(e, WebRTCError):
                 raise e
+            else:
+                continue
 
 
 def audio_to_bytes(audio: tuple[int, NDArray[np.int16 | np.float32]]) -> bytes:
