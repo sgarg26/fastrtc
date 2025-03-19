@@ -7,6 +7,7 @@ from typing import (
     Literal,
     TypedDict,
     cast,
+    Optional,
 )
 
 import gradio as gr
@@ -28,7 +29,8 @@ curr_dir = Path(__file__).parent
 
 
 class Body(BaseModel):
-    sdp: str
+    sdp: Optional[str] = None
+    candidate: Optional[dict[str, Any]] = None
     type: str
     webrtc_id: str
 
