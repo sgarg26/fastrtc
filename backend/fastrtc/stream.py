@@ -84,14 +84,17 @@ class Stream(WebRTCConnectionMixin):
         self._ui = self._generate_default_ui(ui_args)
         self._ui.launch = self._wrap_gradio_launch(self._ui.launch)
 
-    def mount(self, app: FastAPI):
-        app.router.post("/webrtc/offer")(self.offer)
-        app.router.websocket("/telephone/handler")(self.telephone_handler)
-        app.router.post("/telephone/incoming")(self.handle_incoming_call)
-        app.router.websocket("/websocket/offer")(self.websocket_offer)
-        app.router.get("/webrtc/turn")(self.get_rtc_configuration)
+    def mount(self, app: FastAPI, path: str = ""):
+        from fastapi import APIRouter
+
+        router = APIRouter(prefix=path)
+        router.post("/webrtc/offer")(self.offer)
+        router.websocket("/telephone/handler")(self.telephone_handler)
+        router.post("/telephone/incoming")(self.handle_incoming_call)
+        router.websocket("/websocket/offer")(self.websocket_offer)
         lifespan = self._inject_startup_message(app.router.lifespan_context)
         app.router.lifespan_context = lifespan
+        app.include_router(router)
 
     @staticmethod
     def print_error(env: Literal["colab", "spaces"]):
@@ -636,6 +639,7 @@ class Stream(WebRTCConnectionMixin):
         **kwargs,
     ):
         import atexit
+        import inspect
         import secrets
         import threading
         import time
@@ -659,9 +663,18 @@ class Stream(WebRTCConnectionMixin):
         )
         t.start()
 
-        url = setup_tunnel(
-            host, port, share_token=secrets.token_urlsafe(32), share_server_address=None
-        )
+        # Check if setup_tunnel accepts share_server_tls_certificate parameter
+        setup_tunnel_params = inspect.signature(setup_tunnel).parameters
+        tunnel_kwargs = {
+            "local_host": host,
+            "local_port": port,
+            "share_token": secrets.token_urlsafe(32),
+            "share_server_address": None,
+        }
+        if "share_server_tls_certificate" in setup_tunnel_params:
+            tunnel_kwargs["share_server_tls_certificate"] = None
+
+        url = setup_tunnel(**tunnel_kwargs)
         host = urllib.parse.urlparse(url).netloc
 
         URL = "https://api.fastrtc.org"
