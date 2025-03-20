@@ -63,6 +63,7 @@ class Stream(WebRTCConnectionMixin):
         additional_inputs: list[Component] | None = None,
         additional_outputs: list[Component] | None = None,
         ui_args: UIArgs | None = None,
+        send_input_on: Literal["submit", "change"] = "change",
     ):
         WebRTCConnectionMixin.__init__(self)
         self.mode = mode
@@ -78,6 +79,7 @@ class Stream(WebRTCConnectionMixin):
         self.additional_input_components = additional_inputs
         self.additional_outputs_handler = additional_outputs_handler
         self.rtc_configuration = rtc_configuration
+        self.send_input_on = send_input_on
         self._ui = self._generate_default_ui(ui_args)
         self._ui.launch = self._wrap_gradio_launch(self._ui.launch)
 
@@ -229,6 +231,7 @@ class Stream(WebRTCConnectionMixin):
                     trigger=button.click,
                     time_limit=self.time_limit,
                     concurrency_limit=self.concurrency_limit,  # type: ignore
+                    send_input_on=self.send_input_on,
                 )
                 if additional_output_components:
                     assert self.additional_outputs_handler
@@ -489,7 +492,9 @@ class Stream(WebRTCConnectionMixin):
                             outputs=additional_output_components,
                         )
         elif self.modality == "audio-video" and self.mode == "send-receive":
-            with gr.Blocks() as demo:
+            css = """.my-group {max-width: 600px !important; max-height: 600 !important;}
+            .my-column {display: flex !important; justify-content: center !important; align-items: center !important};"""
+            with gr.Blocks(css=css) as demo:
                 gr.HTML(
                     f"""
                 <h1 style='text-align: center'>
@@ -506,8 +511,8 @@ class Stream(WebRTCConnectionMixin):
                 """
                     )
                 with gr.Row():
-                    with gr.Column():
-                        with gr.Group():
+                    with gr.Column(elem_classes=["my-column"]):
+                        with gr.Group(elem_classes=["my-group"]):
                             image = WebRTC(
                                 label="Stream",
                                 rtc_configuration=self.rtc_configuration,
@@ -532,6 +537,7 @@ class Stream(WebRTCConnectionMixin):
                         outputs=[image],
                         time_limit=self.time_limit,
                         concurrency_limit=self.concurrency_limit,  # type: ignore
+                        send_input_on=self.send_input_on,
                     )
                     if additional_output_components:
                         assert self.additional_outputs_handler

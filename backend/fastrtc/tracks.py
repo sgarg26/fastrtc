@@ -18,6 +18,7 @@ from typing import (
     TypeAlias,
     Union,
     cast,
+    Tuple,
 )
 
 import anyio.to_thread
@@ -29,8 +30,9 @@ from aiortc import (
     VideoStreamTrack,
 )
 from aiortc.contrib.media import AudioFrame, VideoFrame  # type: ignore
-from aiortc.mediastreams import MediaStreamError
+from aiortc.mediastreams import MediaStreamError, VIDEO_CLOCK_RATE, VIDEO_TIME_BASE
 from numpy import typing as npt
+import fractions
 
 from fastrtc.utils import (
     AdditionalOutputs,
@@ -70,6 +72,7 @@ class VideoCallback(VideoStreamTrack):
         channel: DataChannel | None = None,
         set_additional_outputs: Callable | None = None,
         mode: Literal["send-receive", "send"] = "send-receive",
+        fps: int = 25,
     ) -> None:
         super().__init__()  # don't forget this!
         self.track = track
@@ -81,6 +84,9 @@ class VideoCallback(VideoStreamTrack):
         self.mode = mode
         self.channel_set = asyncio.Event()
         self.has_started = False
+        self.fps = fps
+        self.frame_ptime = 1.0 / fps
+        self.last_frame_time = 0
 
     def set_channel(self, channel: DataChannel):
         self.channel = channel
@@ -171,6 +177,23 @@ class VideoCallback(VideoStreamTrack):
                 raise e
             else:
                 raise WebRTCError(str(e)) from e
+
+    async def next_timestamp(self) -> Tuple[int, fractions.Fraction]:
+        """Override to control frame rate"""
+        if self.readyState != "live":
+            raise MediaStreamError
+
+        if hasattr(self, "_timestamp"):
+            self._timestamp += int(self.frame_ptime * VIDEO_CLOCK_RATE)
+            wait = self._start + (self._timestamp / VIDEO_CLOCK_RATE) - time.time()
+            print(f"wait: {wait}")
+            if wait > 0:
+                await asyncio.sleep(wait)
+        else:
+            self._start = time.time()
+            self._timestamp = 0
+        print(f"self._timestamp: {self._timestamp}")
+        return self._timestamp, VIDEO_TIME_BASE
 
 
 class StreamHandlerBase(ABC):
