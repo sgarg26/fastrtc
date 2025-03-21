@@ -221,8 +221,6 @@ class WebRTCConnectionMixin:
                     handler_ = handler.callable
                     args["fps"] = handler.fps
                     args["skip_frames"] = handler.skip_frames
-                print(f"args: {args}")
-                print(f"handler_: {handler_}")
                 cb = VideoCallback(
                     relay.subscribe(track),
                     event_handler=cast(Callable, handler_),

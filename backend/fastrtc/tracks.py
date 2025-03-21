@@ -171,9 +171,7 @@ class VideoCallback(VideoStreamTrack):
                 return frame
 
             args = self.add_frame_to_payload(cast(list, self.latest_args), frame_array)
-            print("running event handler", self.event_handler)
             array, outputs = split_output(self.event_handler(*args))
-            print("got output")
             if (
                 isinstance(outputs, AdditionalOutputs)
                 and self.set_additional_outputs

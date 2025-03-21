@@ -70,14 +70,14 @@ from fastrtc import Stream, VideoStreamHandler
 
 
 def process_image(image):
-    # time.sleep(
-    #     0.2
-    # )  # Simulating 200ms processing time per frame; input arrives faster (30 FPS).
+    time.sleep(
+        0.2
+    )  # Simulating 200ms processing time per frame; input arrives faster (30 FPS).
     return np.flip(image, axis=0)
 
 
 stream = Stream(
-    handler=VideoStreamHandler(process_image, skip_frames=False),
+    handler=VideoStreamHandler(process_image, skip_frames=True),
     modality="video",
     mode="send-receive",
 )
