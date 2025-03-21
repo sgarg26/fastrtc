@@ -26,6 +26,7 @@ from .tracks import (
     StreamHandlerBase,
     StreamHandlerImpl,
     VideoEventHandler,
+    VideoStreamHandler,
 )
 from .webrtc_connection_mixin import WebRTCConnectionMixin
 
@@ -254,6 +255,7 @@ class WebRTC(Component, WebRTCConnectionMixin):
             | StreamHandlerImpl
             | AudioVideoStreamHandlerImpl
             | VideoEventHandler
+            | VideoStreamHandler
             | None
         ) = None,
         inputs: Block | Sequence[Block] | set[Block] | None = None,

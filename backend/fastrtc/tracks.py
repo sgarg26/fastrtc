@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import fractions
 import functools
 import inspect
 import logging
@@ -11,14 +12,15 @@ import time
 import traceback
 from abc import ABC, abstractmethod
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import (
     Any,
     Generator,
     Literal,
+    Tuple,
     TypeAlias,
     Union,
     cast,
-    Tuple,
 )
 
 import anyio.to_thread
@@ -30,9 +32,8 @@ from aiortc import (
     VideoStreamTrack,
 )
 from aiortc.contrib.media import AudioFrame, VideoFrame  # type: ignore
-from aiortc.mediastreams import MediaStreamError, VIDEO_CLOCK_RATE, VIDEO_TIME_BASE
+from aiortc.mediastreams import VIDEO_CLOCK_RATE, VIDEO_TIME_BASE, MediaStreamError
 from numpy import typing as npt
-import fractions
 
 from fastrtc.utils import (
     AdditionalOutputs,
@@ -58,6 +59,13 @@ VideoEmitType = (
 VideoEventHandler = Callable[[npt.ArrayLike], VideoEmitType]
 
 
+@dataclass
+class VideoStreamHandler:
+    callable: VideoEventHandler
+    fps: int = 30
+    skip_frames: bool = False
+
+
 class VideoCallback(VideoStreamTrack):
     """
     This works for streaming input and output
@@ -72,9 +80,10 @@ class VideoCallback(VideoStreamTrack):
         channel: DataChannel | None = None,
         set_additional_outputs: Callable | None = None,
         mode: Literal["send-receive", "send"] = "send-receive",
-        fps: int = 25,
+        fps: int = 30,
+        skip_frames: bool = False,
     ) -> None:
-        super().__init__()  # don't forget this!
+        super().__init__()
         self.track = track
         self.event_handler = event_handler
         self.latest_args: str | list[Any] = "not_set"
@@ -86,7 +95,9 @@ class VideoCallback(VideoStreamTrack):
         self.has_started = False
         self.fps = fps
         self.frame_ptime = 1.0 / fps
-        self.last_frame_time = 0
+        self.skip_frames = skip_frames
+        self.frame_queue: asyncio.Queue[VideoFrame] = asyncio.Queue()
+        self.latest_frame = None
 
     def set_channel(self, channel: DataChannel):
         self.channel = channel
@@ -133,22 +144,36 @@ class VideoCallback(VideoStreamTrack):
         if current_channel.get() != self.channel:
             current_channel.set(self.channel)
 
-    async def recv(self):  # type: ignore
-        try:
+    async def accept_input(self):
+        self.has_started = True
+        while not self.thread_quit.is_set():
             try:
                 frame = cast(VideoFrame, await self.track.recv())
+                self.latest_frame = frame
+                self.frame_queue.put_nowait(frame)
             except MediaStreamError:
                 self.stop()
                 return
 
+    def accept_input_in_background(self):
+        if not self.has_started:
+            asyncio.create_task(self.accept_input())
+
+    async def recv(self):  # type: ignore
+        self.accept_input_in_background()
+        try:
+            frame = await self.frame_queue.get()
+            if self.skip_frames:
+                frame = self.latest_frame
             await self.wait_for_channel()
-            frame_array = frame.to_ndarray(format="bgr24")
+            frame_array = frame.to_ndarray(format="bgr24")  # type: ignore
             if self.latest_args == "not_set":
                 return frame
 
             args = self.add_frame_to_payload(cast(list, self.latest_args), frame_array)
-
+            print("running event handler", self.event_handler)
             array, outputs = split_output(self.event_handler(*args))
+            print("got output")
             if (
                 isinstance(outputs, AdditionalOutputs)
                 and self.set_additional_outputs
@@ -167,7 +192,7 @@ class VideoCallback(VideoStreamTrack):
                 pts, time_base = await self.next_timestamp()
                 new_frame.pts = pts
                 new_frame.time_base = time_base
-
+            self.function_running = False
             return new_frame
         except Exception as e:
             logger.debug("exception %s", e)
@@ -186,13 +211,11 @@ class VideoCallback(VideoStreamTrack):
         if hasattr(self, "_timestamp"):
             self._timestamp += int(self.frame_ptime * VIDEO_CLOCK_RATE)
             wait = self._start + (self._timestamp / VIDEO_CLOCK_RATE) - time.time()
-            print(f"wait: {wait}")
             if wait > 0:
                 await asyncio.sleep(wait)
         else:
             self._start = time.time()
             self._timestamp = 0
-        print(f"self._timestamp: {self._timestamp}")
         return self._timestamp, VIDEO_TIME_BASE
 
 
@@ -203,11 +226,13 @@ class StreamHandlerBase(ABC):
         output_sample_rate: int = 24000,
         output_frame_size: int = 960,
         input_sample_rate: int = 48000,
+        fps: int = 30,
     ) -> None:
         self.expected_layout = expected_layout
         self.output_sample_rate = output_sample_rate
         self.output_frame_size = output_frame_size
         self.input_sample_rate = input_sample_rate
+        self.fps = fps
         self.latest_args: list[Any] = []
         self._resampler = None
         self._channel: DataChannel | None = None
@@ -376,10 +401,16 @@ VideoStreamHandlerImpl = AudioVideoStreamHandler | AsyncAudioVideoStreamHandler
 AudioVideoStreamHandlerImpl = AudioVideoStreamHandler | AsyncAudioVideoStreamHandler
 AsyncHandler = AsyncStreamHandler | AsyncAudioVideoStreamHandler
 
-HandlerType = StreamHandlerImpl | VideoStreamHandlerImpl | VideoEventHandler | Callable
+HandlerType = (
+    StreamHandlerImpl
+    | VideoStreamHandlerImpl
+    | VideoEventHandler
+    | Callable
+    | VideoStreamHandler
+)
 
 
-class VideoStreamHandler(VideoCallback):
+class VideoStreamHandler_(VideoCallback):
     async def process_frames(self):
         while not self.thread_quit.is_set():
             try:
@@ -599,6 +630,7 @@ class ServerToClientVideo(VideoStreamTrack):
         event_handler: Callable,
         channel: DataChannel | None = None,
         set_additional_outputs: Callable | None = None,
+        fps: int = 30,
     ) -> None:
         super().__init__()  # don't forget this!
         self.event_handler = event_handler
@@ -607,6 +639,8 @@ class ServerToClientVideo(VideoStreamTrack):
         self.generator: Generator[Any, None, Any] | None = None
         self.channel = channel
         self.set_additional_outputs = set_additional_outputs
+        self.fps = fps
+        self.frame_ptime = 1.0 / fps
 
     def array_to_frame(self, array: np.ndarray) -> VideoFrame:
         return VideoFrame.from_ndarray(array, format="bgr24")
@@ -617,6 +651,21 @@ class ServerToClientVideo(VideoStreamTrack):
     def set_args(self, args: list[Any]):
         self.latest_args = list(args)
         self.args_set.set()
+
+    async def next_timestamp(self) -> Tuple[int, fractions.Fraction]:
+        """Override to control frame rate"""
+        if self.readyState != "live":
+            raise MediaStreamError
+
+        if hasattr(self, "_timestamp"):
+            self._timestamp += int(self.frame_ptime * VIDEO_CLOCK_RATE)
+            wait = self._start + (self._timestamp / VIDEO_CLOCK_RATE) - time.time()
+            if wait > 0:
+                await asyncio.sleep(wait)
+        else:
+            self._start = time.time()
+            self._timestamp = 0
+        return self._timestamp, VIDEO_TIME_BASE
 
     async def recv(self):  # type: ignore
         try:

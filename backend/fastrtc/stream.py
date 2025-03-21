@@ -46,6 +46,11 @@ class UIArgs(TypedDict):
     """Color of the pulse animation. Default is var(--color-accent) of the demo theme."""
     icon_radius: NotRequired[int]
     """Border radius of the icon button expressed as a percentage of the button size. Default is 50%."""
+    send_input_on: NotRequired[Literal["submit", "change"]]
+    """When to send the input to the handler. Default is "change".
+    If "submit", the input will be sent when the submit event is triggered by the user.
+    If "change", the input will be sent whenever the user changes the input value.
+    """
 
 
 class Stream(WebRTCConnectionMixin):
@@ -63,7 +68,6 @@ class Stream(WebRTCConnectionMixin):
         additional_inputs: list[Component] | None = None,
         additional_outputs: list[Component] | None = None,
         ui_args: UIArgs | None = None,
-        send_input_on: Literal["submit", "change"] = "change",
     ):
         WebRTCConnectionMixin.__init__(self)
         self.mode = mode
@@ -79,7 +83,6 @@ class Stream(WebRTCConnectionMixin):
         self.additional_input_components = additional_inputs
         self.additional_outputs_handler = additional_outputs_handler
         self.rtc_configuration = rtc_configuration
-        self.send_input_on = send_input_on
         self._ui = self._generate_default_ui(ui_args)
         self._ui.launch = self._wrap_gradio_launch(self._ui.launch)
 
@@ -231,7 +234,7 @@ class Stream(WebRTCConnectionMixin):
                     trigger=button.click,
                     time_limit=self.time_limit,
                     concurrency_limit=self.concurrency_limit,  # type: ignore
-                    send_input_on=self.send_input_on,
+                    send_input_on=ui_args.get("send_input_on", "change"),
                 )
                 if additional_output_components:
                     assert self.additional_outputs_handler
@@ -278,6 +281,7 @@ class Stream(WebRTCConnectionMixin):
                     outputs=[output_video],
                     time_limit=self.time_limit,
                     concurrency_limit=self.concurrency_limit,  # type: ignore
+                    send_input_on=ui_args.get("send_input_on", "change"),
                 )
                 if additional_output_components:
                     assert self.additional_outputs_handler
@@ -328,6 +332,7 @@ class Stream(WebRTCConnectionMixin):
                     outputs=[image],
                     time_limit=self.time_limit,
                     concurrency_limit=self.concurrency_limit,  # type: ignore
+                    send_input_on=ui_args.get("send_input_on", "change"),
                 )
                 if additional_output_components:
                     assert self.additional_outputs_handler
@@ -380,6 +385,7 @@ class Stream(WebRTCConnectionMixin):
                     trigger=button.click,
                     time_limit=self.time_limit,
                     concurrency_limit=self.concurrency_limit,  # type: ignore
+                    send_input_on=ui_args.get("send_input_on", "change"),
                 )
                 if additional_output_components:
                     assert self.additional_outputs_handler
@@ -431,6 +437,7 @@ class Stream(WebRTCConnectionMixin):
                     outputs=[image],
                     time_limit=self.time_limit,
                     concurrency_limit=self.concurrency_limit,  # type: ignore
+                    send_input_on=ui_args.get("send_input_on", "change"),
                 )
                 if additional_output_components:
                     assert self.additional_outputs_handler
@@ -483,6 +490,7 @@ class Stream(WebRTCConnectionMixin):
                         outputs=[image],
                         time_limit=self.time_limit,
                         concurrency_limit=self.concurrency_limit,  # type: ignore
+                        send_input_on=ui_args.get("send_input_on", "change"),
                     )
                     if additional_output_components:
                         assert self.additional_outputs_handler
@@ -537,7 +545,7 @@ class Stream(WebRTCConnectionMixin):
                         outputs=[image],
                         time_limit=self.time_limit,
                         concurrency_limit=self.concurrency_limit,  # type: ignore
-                        send_input_on=self.send_input_on,
+                        send_input_on=ui_args.get("send_input_on", "change"),
                     )
                     if additional_output_components:
                         assert self.additional_outputs_handler
